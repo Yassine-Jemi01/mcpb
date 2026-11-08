@@ -3,6 +3,54 @@
 // Transport: newline-delimited JSON-RPC over stdin/stdout.
 // This server only reads procfs and OS metadata. It never executes shell commands.
 
+function read_linux_text_file(borrowed_string path) -> owned_string {
+    // procfs files are streams and often report a size of zero. Use stream I/O,
+    // not io.try_read_file(), which intentionally seeks regular text files.
+    let int stream = io.stream_open_read(path);
+    if (stream < 0) {
+        let string message = string.concat("Unable to open ", path);
+        return string.own(message);
+    }
+
+    let byte chunk[] = [byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0), byte(0)];
+    let string printable[] = [" ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"];
+    let owned_string output = string.own("");
+    let int count = io.stream_read(stream, chunk);
+
+    while (count > 0) {
+        let int index = 0;
+        while (index < count) {
+            let int value = string.parse_int(to_string(chunk[index]));
+            if (value == 9) {
+                output = owned_string.concat(output, "\\t");
+            } else if (value == 10) {
+                output = owned_string.concat(output, "\\n");
+            } else if (value == 13) {
+                output = owned_string.concat(output, "\\r");
+            } else if (value >= 32 and value <= 126) {
+                let int printable_index = value - 32;
+                output = owned_string.concat(output, printable[printable_index]);
+            } else if (value >= 127) {
+                // Kernel procfs text is normally ASCII. Replace non-ASCII bytes
+                // rather than emitting invalid UTF-8 in an MCP JSON message.
+                output = owned_string.concat(output, "?");
+            }
+            index = index + 1;
+        }
+        count = io.stream_read(stream, chunk);
+    }
+
+    let bool closed = io.stream_close(stream);
+    if (count < 0) {
+        return string.own("Read error: stream_read failed.");
+    }
+    if (not closed) {
+        return string.own("Read warning: the stream could not be closed cleanly.");
+    }
+
+    return move(output);
+}
+
 function send_result(borrowed_string id_raw, borrowed_string result_raw) -> void {
     let owned_string response = json.object();
     response = json.set(response, "jsonrpc", "\"2.0\"");
@@ -27,7 +75,7 @@ function send_error(borrowed_string id_raw, int code, borrowed_string message) -
 }
 
 function send_unsupported_version(borrowed_string id_raw, borrowed_string requested_version) -> void {
-    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
+    let owned_string supported_versions = json.parse("[\\"2026-07-28\\"]");
     let owned_string requested_raw = json.escape(requested_version);
 
     let owned_string error_data = json.object();
@@ -91,9 +139,9 @@ function send_initialize_result(
     }
 
     let owned_string version_raw = json.escape(negotiated_version);
-    let owned_string capabilities = json.parse("{\"tools\":{}}");
+    let owned_string capabilities = json.parse("{\\"tools\\":{}}");
     let owned_string server_info = json.parse(
-        "{\"name\":\"linux-inspector-ylang\",\"version\":\"0.1.0\"}"
+        "{\\"name\\":\\"linux-inspector-ylang\\",\\"version\\":\\"0.1.0\\"}"
     );
 
     let owned_string result = json.object();
@@ -104,10 +152,10 @@ function send_initialize_result(
 }
 
 function send_discovery_result(borrowed_string id_raw) -> void {
-    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
-    let owned_string capabilities = json.parse("{\"tools\":{}}");
+    let owned_string supported_versions = json.parse("[\\"2026-07-28\\"]");
+    let owned_string capabilities = json.parse("{\\"tools\\":{}}");
     let owned_string server_info = json.parse(
-        "{\"name\":\"linux-inspector-ylang\",\"version\":\"0.1.0\"}"
+        "{\\"name\\":\\"linux-inspector-ylang\\",\\"version\\":\\"0.1.0\\"}"
     );
 
     let owned_string metadata = json.object();
@@ -130,19 +178,19 @@ function send_discovery_result(borrowed_string id_raw) -> void {
 
 function send_tools_list(borrowed_string id_raw, bool modern_mode) -> void {
     let owned_string tools = json.parse(
-        "[\
-{\"name\":\"system_info\",\"description\":\"Read Linux distribution identification from /etc/os-release.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"hostname_info\",\"description\":\"Read the system hostname from /etc/hostname.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"kernel_info\",\"description\":\"Read the running kernel build information from /proc/version.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"cpu_info\",\"description\":\"Read CPU model, topology, and feature information from /proc/cpuinfo.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"memory_info\",\"description\":\"Read memory totals and counters from /proc/meminfo.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"uptime_info\",\"description\":\"Read uptime and idle-time counters from /proc/uptime.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"load_average\",\"description\":\"Read load averages and scheduler counts from /proc/loadavg.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"loaded_modules\",\"description\":\"Read the currently loaded kernel module list from /proc/modules.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"mounts_info\",\"description\":\"Read the current process mount table from /proc/self/mounts.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"network_info\",\"description\":\"Read network interface byte and packet counters from /proc/net/dev.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"disk_stats\",\"description\":\"Read block-device I/O counters from /proc/diskstats.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
-{\"name\":\"memory_pressure\",\"description\":\"Read memory pressure stall information from /proc/pressure/memory when available.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}]"
+        "[\\
+{\\"name\\":\\"system_info\\",\\"description\\":\\"Read Linux distribution identification from /etc/os-release.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"hostname_info\\",\\"description\\":\\"Read the system hostname from /etc/hostname.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"kernel_info\\",\\"description\\":\\"Read the running kernel build information from /proc/version.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"cpu_info\\",\\"description\\":\\"Read CPU model, topology, and feature information from /proc/cpuinfo.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"memory_info\\",\\"description\\":\\"Read memory totals and counters from /proc/meminfo.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"uptime_info\\",\\"description\\":\\"Read uptime and idle-time counters from /proc/uptime.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"load_average\\",\\"description\\":\\"Read load averages and scheduler counts from /proc/loadavg.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"loaded_modules\\",\\"description\\":\\"Read the currently loaded kernel module list from /proc/modules.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"mounts_info\\",\\"description\\":\\"Read the current process mount table from /proc/self/mounts.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"network_info\\",\\"description\\":\\"Read network interface byte and packet counters from /proc/net/dev.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"disk_stats\\",\\"description\\":\\"Read block-device I/O counters from /proc/diskstats.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}},\\
+{\\"name\\":\\"memory_pressure\\",\\"description\\":\\"Read memory pressure stall information from /proc/pressure/memory when available.\\",\\"inputSchema\\":{\\"type\\":\\"object\\",\\"properties\\":{},\\"additionalProperties\\":false},\\"annotations\\":{\\"readOnlyHint\\":true}}]"
     );
 
     let owned_string result = json.object();
@@ -163,7 +211,7 @@ function main() -> int {
     while (string.length(input) > 0) {
         if (!json.valid(input)) {
             terminal.write_line(
-                "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}"
+                "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":null,\\"error\\":{\\"code\\":-32700,\\"message\\":\\"Parse error\\"}}"
             );
         } else {
             let owned_string request = json.parse(input);
@@ -261,24 +309,9 @@ function main() -> int {
                             if (string.length(file_path) == 0) {
                                 send_error(id_raw, -32602, "Unknown Linux Inspector tool.");
                             } else {
-                                let owned_string report = io.try_read_file(file_path);
-                                let bool read_failed = io.last_error() != "No error";
-
-                                if (read_failed) {
-                                    let string error_text = string.concat(
-                                        "Unable to read ",
-                                        file_path
-                                    );
-                                    error_text = string.concat(error_text, ": ");
-                                    error_text = string.concat(error_text, io.last_error());
-                                    report = string.own(error_text);
-                                } else {
-                                    let string heading = string.concat("Source: ", file_path);
-                                    heading = string.concat(heading, "\n\n");
-                                    let string full_report = string.concat(heading, report);
-                                    report = string.own(full_report);
-                                }
-
+                                let owned_string report = read_linux_text_file(file_path);
+                                let bool read_failed = string.starts_with(report, "Unable to open ") or
+                                    string.starts_with(report, "Read error:");
                                 send_tool_result(id_raw, report, read_failed, modern_mode);
                             }
                         }

@@ -94,7 +94,7 @@ function send_error(borrowed_string id_raw, int code, borrowed_string message) -
 }
 
 function send_unsupported_version(borrowed_string id_raw, borrowed_string requested_version) -> void {
-    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
+    let owned_string supported_versions = json.parse("[\"2026-07-28\",\"2025-11-25\",\"2025-06-18\",\"2025-03-26\",\"2024-11-05\"]");
     let owned_string requested_raw = json.escape(requested_version);
 
     let owned_string error_data = json.object();
@@ -171,7 +171,7 @@ function send_initialize_result(
 }
 
 function send_discovery_result(borrowed_string id_raw) -> void {
-    let owned_string supported_versions = json.parse("[\"2026-07-28\",\"2025-11-25\",\"2025-06-18\",\"2025-03-26\",\"2024-11-05\"]");
+    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
     let owned_string capabilities = json.parse("{\"tools\":{}}");
     let owned_string server_info = json.parse(
         "{\"name\":\"linux-inspector-ylang\",\"version\":\"0.1.0\"}"

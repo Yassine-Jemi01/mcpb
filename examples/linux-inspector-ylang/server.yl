@@ -4,8 +4,19 @@
 // This server only reads procfs and OS metadata. It never executes shell commands.
 
 function read_linux_text_file(borrowed_string path) -> owned_string {
-    // procfs files are streams and often report a size of zero. Use stream I/O,
-    // not io.try_read_file(), which seeks regular text files.
+    // Regular /etc metadata is read with the text API. procfs files are streams
+    // and often report a size of zero, so they must use sequential Binary I/O.
+    if (not string.starts_with(path, "/proc/")) {
+        let owned_string text = io.try_read_file(path);
+        if (io.last_error() == "No error") {
+            return move(text);
+        }
+        let string message = string.concat("Unable to open ", path);
+        message = string.concat(message, ": ");
+        message = string.concat(message, io.last_error());
+        return string.own(message);
+    }
+
     let int stream = io.stream_open_read(path);
     if (stream < 0) {
         let string message = string.concat("Unable to open ", path);

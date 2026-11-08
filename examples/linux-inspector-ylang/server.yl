@@ -9,7 +9,10 @@ function read_linux_text_file(borrowed_string path) -> owned_string {
     if (not string.starts_with(path, "/proc/")) {
         let owned_string text = io.try_read_file(path);
         if (io.last_error() == "No error") {
-            return move(text);
+            let string heading = string.concat("Source: ", path);
+            heading = string.concat(heading, "\n\n");
+            let string report = string.concat(heading, text);
+            return string.own(report);
         }
         let string message = string.concat("Unable to open ", path);
         message = string.concat(message, ": ");
@@ -61,7 +64,10 @@ function read_linux_text_file(borrowed_string path) -> owned_string {
         return string.own("Read warning: the stream could not be closed cleanly.");
     }
 
-    return move(output);
+    let string heading = string.concat("Source: ", path);
+    heading = string.concat(heading, "\n\n");
+    let string report = string.concat(heading, output);
+    return string.own(report);
 }
 
 function send_result(borrowed_string id_raw, borrowed_string result_raw) -> void {

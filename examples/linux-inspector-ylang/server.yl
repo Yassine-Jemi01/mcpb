@@ -1,0 +1,298 @@
+// SPDX-License-Identifier: Apache-2.0
+// Linux Inspector MCP server — implemented entirely in YLang 2.3.0.
+// Transport: newline-delimited JSON-RPC over stdin/stdout.
+// This server only reads procfs and OS metadata. It never executes shell commands.
+
+function send_result(borrowed_string id_raw, borrowed_string result_raw) -> void {
+    let owned_string response = json.object();
+    response = json.set(response, "jsonrpc", "\"2.0\"");
+    response = json.set(response, "id", id_raw);
+    response = json.set(response, "result", result_raw);
+    terminal.write_line(response);
+}
+
+function send_error(borrowed_string id_raw, int code, borrowed_string message) -> void {
+    let owned_string error_object = json.object();
+    let string code_raw = to_string(code);
+    let owned_string message_raw = json.escape(message);
+
+    error_object = json.set(error_object, "code", code_raw);
+    error_object = json.set(error_object, "message", message_raw);
+
+    let owned_string response = json.object();
+    response = json.set(response, "jsonrpc", "\"2.0\"");
+    response = json.set(response, "id", id_raw);
+    response = json.set(response, "error", error_object);
+    terminal.write_line(response);
+}
+
+function send_unsupported_version(borrowed_string id_raw, borrowed_string requested_version) -> void {
+    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
+    let owned_string requested_raw = json.escape(requested_version);
+
+    let owned_string error_data = json.object();
+    error_data = json.set(error_data, "supported", supported_versions);
+    error_data = json.set(error_data, "requested", requested_raw);
+
+    let owned_string error_object = json.object();
+    error_object = json.set(error_object, "code", "-32022");
+    error_object = json.set(error_object, "message", "\"Unsupported protocol version\"");
+    error_object = json.set(error_object, "data", error_data);
+
+    let owned_string response = json.object();
+    response = json.set(response, "jsonrpc", "\"2.0\"");
+    response = json.set(response, "id", id_raw);
+    response = json.set(response, "error", error_object);
+    terminal.write_line(response);
+}
+
+function send_tool_result(
+    borrowed_string id_raw,
+    borrowed_string text_value,
+    bool is_error,
+    bool modern_mode
+) -> void {
+    let owned_string escaped_text = json.escape(text_value);
+
+    let owned_string content_item = json.object();
+    content_item = json.set(content_item, "type", "\"text\"");
+    content_item = json.set(content_item, "text", escaped_text);
+
+    let owned_string content = json.array();
+    content = json.push(content, content_item);
+
+    let owned_string result = json.object();
+    result = json.set(result, "content", content);
+    if (is_error) {
+        result = json.set(result, "isError", "true");
+    } else {
+        result = json.set(result, "isError", "false");
+    }
+
+    if (modern_mode) {
+        result = json.set(result, "resultType", "\"complete\"");
+    }
+
+    send_result(id_raw, result);
+}
+
+function send_initialize_result(
+    borrowed_string id_raw,
+    borrowed_string requested_version
+) -> void {
+    // These are the handshake-based MCP revisions supported by this server.
+    let string negotiated_version = "2025-11-25";
+    if (requested_version == "2025-06-18") {
+        negotiated_version = "2025-06-18";
+    } else if (requested_version == "2025-03-26") {
+        negotiated_version = "2025-03-26";
+    } else if (requested_version == "2024-11-05") {
+        negotiated_version = "2024-11-05";
+    }
+
+    let owned_string version_raw = json.escape(negotiated_version);
+    let owned_string capabilities = json.parse("{\"tools\":{}}");
+    let owned_string server_info = json.parse(
+        "{\"name\":\"linux-inspector-ylang\",\"version\":\"0.1.0\"}"
+    );
+
+    let owned_string result = json.object();
+    result = json.set(result, "protocolVersion", version_raw);
+    result = json.set(result, "capabilities", capabilities);
+    result = json.set(result, "serverInfo", server_info);
+    send_result(id_raw, result);
+}
+
+function send_discovery_result(borrowed_string id_raw) -> void {
+    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
+    let owned_string capabilities = json.parse("{\"tools\":{}}");
+    let owned_string server_info = json.parse(
+        "{\"name\":\"linux-inspector-ylang\",\"version\":\"0.1.0\"}"
+    );
+
+    let owned_string metadata = json.object();
+    metadata = json.set(metadata, "io.modelcontextprotocol/serverInfo", server_info);
+
+    let owned_string result = json.object();
+    result = json.set(result, "resultType", "\"complete\"");
+    result = json.set(result, "supportedVersions", supported_versions);
+    result = json.set(result, "capabilities", capabilities);
+    result = json.set(result, "_meta", metadata);
+    result = json.set(
+        result,
+        "instructions",
+        "\"Read-only Linux diagnostics. Tools return the contents of specific OS and procfs files; no commands are executed and no system state is changed.\""
+    );
+    result = json.set(result, "ttlMs", "30000");
+    result = json.set(result, "cacheScope", "\"private\"");
+    send_result(id_raw, result);
+}
+
+function send_tools_list(borrowed_string id_raw, bool modern_mode) -> void {
+    let owned_string tools = json.parse(
+        "[\
+{\"name\":\"system_info\",\"description\":\"Read Linux distribution identification from /etc/os-release.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"hostname_info\",\"description\":\"Read the system hostname from /etc/hostname.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"kernel_info\",\"description\":\"Read the running kernel build information from /proc/version.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"cpu_info\",\"description\":\"Read CPU model, topology, and feature information from /proc/cpuinfo.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"memory_info\",\"description\":\"Read memory totals and counters from /proc/meminfo.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"uptime_info\",\"description\":\"Read uptime and idle-time counters from /proc/uptime.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"load_average\",\"description\":\"Read load averages and scheduler counts from /proc/loadavg.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"loaded_modules\",\"description\":\"Read the currently loaded kernel module list from /proc/modules.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"mounts_info\",\"description\":\"Read the current process mount table from /proc/self/mounts.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"network_info\",\"description\":\"Read network interface byte and packet counters from /proc/net/dev.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"disk_stats\",\"description\":\"Read block-device I/O counters from /proc/diskstats.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},\
+{\"name\":\"memory_pressure\",\"description\":\"Read memory pressure stall information from /proc/pressure/memory when available.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}]"
+    );
+
+    let owned_string result = json.object();
+    result = json.set(result, "tools", tools);
+    if (modern_mode) {
+        result = json.set(result, "resultType", "\"complete\"");
+        result = json.set(result, "ttlMs", "30000");
+        result = json.set(result, "cacheScope", "\"private\"");
+    }
+    send_result(id_raw, result);
+}
+
+function main() -> int {
+    let bool legacy_mode = false;
+    let owned_string input = terminal.read_line("");
+
+    // MCP stdio messages are one JSON-RPC message per line.
+    while (string.length(input) > 0) {
+        if (!json.valid(input)) {
+            terminal.write_line(
+                "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}"
+            );
+        } else {
+            let owned_string request = json.parse(input);
+            let owned_string method = json.get_string(request, "method");
+            let bool has_id = json.has(request, "id");
+
+            // Notifications do not receive responses.
+            if (not has_id) {
+                if (method == "notifications/initialized") {
+                    legacy_mode = true;
+                }
+            } else {
+                let owned_string id_raw = json.get(request, "id");
+                let owned_string params = json.get(request, "params");
+
+                if (method == "initialize") {
+                    legacy_mode = true;
+                    let owned_string requested_version = json.get_string(
+                        params,
+                        "protocolVersion"
+                    );
+                    send_initialize_result(id_raw, requested_version);
+                } else if (method == "server/discover") {
+                    let owned_string metadata = json.get(params, "_meta");
+                    let owned_string requested_version = json.get_string(
+                        metadata,
+                        "io.modelcontextprotocol/protocolVersion"
+                    );
+                    if (requested_version == "2026-07-28") {
+                        send_discovery_result(id_raw);
+                    } else {
+                        send_unsupported_version(id_raw, requested_version);
+                    }
+                } else if (method == "tools/list" or method == "tools/call") {
+                    let owned_string metadata = json.get(params, "_meta");
+                    let owned_string protocol_version = string.own("");
+                    if (string.length(metadata) > 0) {
+                        protocol_version = json.get_string(
+                            metadata,
+                            "io.modelcontextprotocol/protocolVersion"
+                        );
+                    }
+
+                    let bool modern_mode = false;
+                    let bool allowed = false;
+                    if (string.length(protocol_version) > 0) {
+                        if (protocol_version == "2026-07-28") {
+                            modern_mode = true;
+                            allowed = true;
+                        } else {
+                            send_unsupported_version(id_raw, protocol_version);
+                        }
+                    } else if (legacy_mode) {
+                        allowed = true;
+                    } else {
+                        send_error(
+                            id_raw,
+                            -32000,
+                            "Send server/discover or initialize before calling legacy methods."
+                        );
+                    }
+
+                    if (allowed) {
+                        if (method == "tools/list") {
+                            send_tools_list(id_raw, modern_mode);
+                        } else {
+                            let owned_string tool_name = json.get_string(params, "name");
+                            let string file_path = "";
+                            if (tool_name == "system_info") {
+                                file_path = "/etc/os-release";
+                            } else if (tool_name == "hostname_info") {
+                                file_path = "/etc/hostname";
+                            } else if (tool_name == "kernel_info") {
+                                file_path = "/proc/version";
+                            } else if (tool_name == "cpu_info") {
+                                file_path = "/proc/cpuinfo";
+                            } else if (tool_name == "memory_info") {
+                                file_path = "/proc/meminfo";
+                            } else if (tool_name == "uptime_info") {
+                                file_path = "/proc/uptime";
+                            } else if (tool_name == "load_average") {
+                                file_path = "/proc/loadavg";
+                            } else if (tool_name == "loaded_modules") {
+                                file_path = "/proc/modules";
+                            } else if (tool_name == "mounts_info") {
+                                file_path = "/proc/self/mounts";
+                            } else if (tool_name == "network_info") {
+                                file_path = "/proc/net/dev";
+                            } else if (tool_name == "disk_stats") {
+                                file_path = "/proc/diskstats";
+                            } else if (tool_name == "memory_pressure") {
+                                file_path = "/proc/pressure/memory";
+                            }
+
+                            if (string.length(file_path) == 0) {
+                                send_error(id_raw, -32602, "Unknown Linux Inspector tool.");
+                            } else {
+                                let owned_string report = io.try_read_file(file_path);
+                                let bool read_failed = io.last_error() != "No error";
+
+                                if (read_failed) {
+                                    let string error_text = string.concat(
+                                        "Unable to read ",
+                                        file_path
+                                    );
+                                    error_text = string.concat(error_text, ": ");
+                                    error_text = string.concat(error_text, io.last_error());
+                                    report = string.own(error_text);
+                                } else {
+                                    let string heading = string.concat("Source: ", file_path);
+                                    heading = string.concat(heading, "\n\n");
+                                    let string full_report = string.concat(heading, report);
+                                    report = string.own(full_report);
+                                }
+
+                                send_tool_result(id_raw, report, read_failed, modern_mode);
+                            }
+                        }
+                    }
+                } else if (method == "ping" and legacy_mode) {
+                    send_result(id_raw, "{}");
+                } else {
+                    send_error(id_raw, -32601, "Method not found.");
+                }
+            }
+        }
+
+        input = terminal.read_line("");
+    }
+
+    return 0;
+}

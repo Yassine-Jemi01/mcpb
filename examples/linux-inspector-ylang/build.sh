@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd -- "$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
-YLANG_COMPILER="\${YLANG_COMPILER:-ylang}"
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+YLANG_COMPILER="${YLANG_COMPILER:-ylang}"
 OUTPUT="$ROOT/server/linux-inspector-ylang"
 
 if ! command -v "$YLANG_COMPILER" >/dev/null 2>&1; then

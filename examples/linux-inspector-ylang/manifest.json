@@ -1,0 +1,50 @@
+{
+  "manifest_version": "0.3",
+  "name": "linux-inspector-ylang",
+  "display_name": "Linux Inspector (YLang)",
+  "version": "0.1.0",
+  "description": "Read-only Linux system diagnostics MCP server implemented in YLang 2.3.",
+  "long_description": "A native Linux MCP server with tools for distribution, kernel, CPU, memory, uptime, load, loaded modules, mounts, network counters, disk statistics, and memory pressure. The server reads OS metadata and procfs streams only; it does not invoke shell commands or modify the system.",
+  "author": {
+    "name": "Yassine Jemi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yassine-Jemi01/mcpb"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/linux-inspector-ylang",
+    "mcp_config": {
+      "command": "${__dirname}/server/linux-inspector-ylang",
+      "args": [],
+      "env": {}
+    }
+  },
+  "tools": [
+    { "name": "system_info", "description": "Read Linux distribution identification." },
+    { "name": "hostname_info", "description": "Read the system hostname." },
+    { "name": "kernel_info", "description": "Read running kernel build information." },
+    { "name": "cpu_info", "description": "Read CPU model, topology, and feature information." },
+    { "name": "memory_info", "description": "Read memory totals and counters." },
+    { "name": "uptime_info", "description": "Read system uptime and idle-time counters." },
+    { "name": "load_average", "description": "Read load averages and scheduler counts." },
+    { "name": "loaded_modules", "description": "Read currently loaded kernel modules." },
+    { "name": "mounts_info", "description": "Read the current process mount table." },
+    { "name": "network_info", "description": "Read network interface counters." },
+    { "name": "disk_stats", "description": "Read block-device I/O counters." },
+    { "name": "memory_pressure", "description": "Read memory pressure stall information." }
+  ],
+  "keywords": [
+    "linux",
+    "diagnostics",
+    "procfs",
+    "system-information",
+    "mcp",
+    "ylang"
+  ],
+  "license": "Apache-2.0",
+  "compatibility": {
+    "platforms": ["linux"]
+  }
+}

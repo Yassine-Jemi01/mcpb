@@ -357,7 +357,7 @@ function main() -> int {
                             }
                         }
                     }
-                } else if (method == "ping" and legacy_mode) {
+                } else if (method == "ping") {
                     send_result(id_raw, "{}");
                 } else {
                     send_error(id_raw, -32601, "Method not found.");

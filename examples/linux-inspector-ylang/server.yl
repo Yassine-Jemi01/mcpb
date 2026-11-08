@@ -23,11 +23,11 @@ function read_linux_text_file(borrowed_string path) -> owned_string {
         while (index < count) {
             let int value = string.parse_int(to_string(chunk[index]));
             if (value == 9) {
-                output = owned_string.concat(output, "\t");
+                block_text = owned_string.concat(block_text, "\t");
             } else if (value == 10) {
-                output = owned_string.concat(output, "\n");
+                block_text = owned_string.concat(block_text, "\n");
             } else if (value == 13) {
-                output = owned_string.concat(output, "\r");
+                block_text = owned_string.concat(block_text, "\r");
             } else if (value >= 32 and value <= 126) {
                 let int printable_index = value - 32;
                 block_text = owned_string.concat(block_text, printable[printable_index]);

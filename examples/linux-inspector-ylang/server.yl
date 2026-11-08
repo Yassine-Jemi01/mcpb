@@ -188,9 +188,12 @@ function append_tool(
         "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"
     );
 
+    let owned_string name_json = json.escape(name);
+    let owned_string description_json = json.escape(description);
+
     let owned_string tool = json.object();
-    tool = json.set(tool, "name", name);
-    tool = json.set(tool, "description", description);
+    tool = json.set(tool, "name", name_json);
+    tool = json.set(tool, "description", description_json);
     tool = json.set(tool, "inputSchema", schema);
 
     // Tool annotations were introduced after the oldest supported MCP revision.

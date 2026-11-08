@@ -20,6 +20,7 @@ But, the MCP servers themselves are not robust secure production ready servers a
 | `chrome-applescript`  | Node.js | Browser automation via AppleScript          |
 | `file-manager-python` | Python  | File system operations and path handling    |
 | `calculator-rust`     | Binary  | Compiled Rust binary as MCP Bundle          |
+| `linux-inspector-ylang` | Binary | Native YLang 2.3 Linux diagnostics server    |
 
 ## Usage
 
@@ -30,3 +31,18 @@ dxt pack examples/hello-world-node
 ```
 
 Use these as starting points for your own extensions, but ensure you implement proper security measures before deploying to users.
+
+### Linux Inspector (YLang)
+
+`linux-inspector-ylang` is a read-only Linux diagnostics server implemented in YLang 2.3.0. It demonstrates a compiled language outside the TypeScript/Node/Python examples, using MCPB's existing `binary` server type. It exposes 12 tools backed by `/etc` and `/proc` data and includes protocol smoke tests.
+
+Build and test it from the repository root:
+
+```sh
+cd examples/linux-inspector-ylang
+bash build.sh
+python3 tests/protocol_smoke.py server/linux-inspector-ylang
+mcpb pack .
+```
+
+See [`linux-inspector-ylang/README.md`](linux-inspector-ylang/README.md) for the supported MCP protocol versions, requirements, and limitations.

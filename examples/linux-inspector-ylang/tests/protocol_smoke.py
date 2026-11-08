@@ -177,6 +177,82 @@ def modern_protocol_test(binary: Path) -> None:
     assert "Source: /proc/uptime" in result_text(responses[2]), call
 
 
+def all_tools_test(binary: Path) -> None:
+    sources = {
+        "system_info": "/etc/os-release",
+        "hostname_info": "/etc/hostname",
+        "kernel_info": "/proc/version",
+        "cpu_info": "/proc/cpuinfo",
+        "memory_info": "/proc/meminfo",
+        "uptime_info": "/proc/uptime",
+        "load_average": "/proc/loadavg",
+        "loaded_modules": "/proc/modules",
+        "mounts_info": "/proc/self/mounts",
+        "network_info": "/proc/net/dev",
+        "disk_stats": "/proc/diskstats",
+        "memory_pressure": "/proc/pressure/memory",
+    }
+    requests = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "linux-inspector-smoke-test", "version": "1.0"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+    ]
+    requests.extend(
+        {
+            "jsonrpc": "2.0",
+            "id": index + 2,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": {}},
+        }
+        for index, name in enumerate(sources)
+    )
+
+    responses = run_server(binary, requests)
+    assert len(responses) == len(sources) + 1, responses
+    by_id = {item["id"]: item for item in responses}
+    for index, (name, source) in enumerate(sources.items(), start=2):
+        response = by_id[index]
+        text = result_text(response)
+        result = response.get("result", {})
+        assert text, (name, response)
+        if name == "memory_pressure" and text.startswith("Unable to open "):
+            assert result.get("isError") is True, response
+            continue
+        assert f"Source: {source}" in text, (name, text)
+        assert result.get("isError") is False, response
+
+
+def unsupported_version_test(binary: Path) -> None:
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2099-01-01",
+                "io.modelcontextprotocol/clientInfo": {
+                    "name": "linux-inspector-smoke-test",
+                    "version": "1.0",
+                },
+                "io.modelcontextprotocol/clientCapabilities": {},
+            }
+        },
+    }
+    responses = run_server(binary, [request])
+    assert len(responses) == 1, responses
+    error = responses[0].get("error", {})
+    assert error.get("code") == -32022, responses[0]
+    assert error.get("message") == "Unsupported protocol version", responses[0]
+
+
 def parse_error_test(binary: Path) -> None:
     completed = subprocess.run(
         [str(binary)],
@@ -206,6 +282,10 @@ def main() -> int:
     print("PASS: legacy MCP initialization, tools/list, tools/call, and unknown-tool error")
     modern_protocol_test(binary)
     print("PASS: MCP 2026-07-28 discovery, cache metadata, and tool calls")
+    all_tools_test(binary)
+    print("PASS: all 12 read-only Linux diagnostic tools")
+    unsupported_version_test(binary)
+    print("PASS: unsupported MCP protocol versions are rejected")
     parse_error_test(binary)
     print("PASS: malformed JSON returns a JSON-RPC parse error")
     print("All Linux Inspector protocol smoke tests passed.")

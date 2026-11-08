@@ -44,9 +44,9 @@ python3 tests/protocol_smoke.py server/linux-inspector-ylang
 
 The smoke tests cover both protocol eras:
 
-- Legacy MCP initialization at `2025-11-25`, tools/list, tools/call, and unknown-tool errors.
-- Modern MCP discovery at `2026-07-28`, tools/list cache metadata, and tools/call.
-- Malformed JSON-RPC input.
+- Legacy MCP initialization at `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`, plus tools/list, tools/call, legacy ping, and unknown-tool errors.
+- Modern MCP discovery at `2026-07-28`, modern-only version advertisement, cache metadata, read-only annotations, tools/call, and rejection of the removed ping method.
+- Unsupported protocol versions and malformed JSON-RPC input.
 
 ## Package as an MCP Bundle
 

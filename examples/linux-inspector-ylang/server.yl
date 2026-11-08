@@ -94,7 +94,7 @@ function send_error(borrowed_string id_raw, int code, borrowed_string message) -
 }
 
 function send_unsupported_version(borrowed_string id_raw, borrowed_string requested_version) -> void {
-    let owned_string supported_versions = json.parse("[\"2026-07-28\",\"2025-11-25\",\"2025-06-18\",\"2025-03-26\",\"2024-11-05\"]");
+    let owned_string supported_versions = json.parse("[\"2026-07-28\"]");
     let owned_string requested_raw = json.escape(requested_version);
 
     let owned_string error_data = json.object();
@@ -364,7 +364,24 @@ function main() -> int {
                         }
                     }
                 } else if (method == "ping") {
-                    send_result(id_raw, "{}");
+                    let owned_string metadata = json.get(params, "_meta");
+                    let owned_string protocol_version = json.get_string(
+                        metadata,
+                        "io.modelcontextprotocol/protocolVersion"
+                    );
+                    if (protocol_version == "2026-07-28") {
+                        send_error(id_raw, -32601, "Method not found.");
+                    } else if (string.length(protocol_version) > 0) {
+                        send_unsupported_version(id_raw, protocol_version);
+                    } else if (legacy_mode) {
+                        send_result(id_raw, "{}");
+                    } else {
+                        send_error(
+                            id_raw,
+                            -32000,
+                            "Send server/discover or initialize before calling legacy methods."
+                        );
+                    }
                 } else {
                     send_error(id_raw, -32601, "Method not found.");
                 }

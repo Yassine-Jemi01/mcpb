@@ -119,6 +119,30 @@ def legacy_protocol_test(binary: Path) -> None:
     assert responses[4].get("error", {}).get("code") == -32602, responses[4]
 
 
+
+def oldest_legacy_protocol_test(binary: Path) -> None:
+    requests = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "linux-inspector-smoke-test", "version": "1.0"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    ]
+    responses = run_server(binary, requests)
+    assert len(responses) == 2, responses
+    assert responses[0]["result"]["protocolVersion"] == "2024-11-05", responses[0]
+    tools = responses[1]["result"]["tools"]
+    assert len(tools) == 12, tools
+    assert all("annotations" not in tool for tool in tools), tools
+
+
 def modern_protocol_test(binary: Path) -> None:
     metadata = {
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -170,6 +194,7 @@ def modern_protocol_test(binary: Path) -> None:
     assert listing["cacheScope"] == "private", listing
     assert listing["ttlMs"] == 30000, listing
     assert len(listing["tools"]) == 12, listing
+    assert all(tool.get("annotations", {}).get("readOnlyHint") is True for tool in listing["tools"]), listing
 
     call = responses[2]["result"]
     assert call["resultType"] == "complete", call
@@ -280,8 +305,10 @@ def main() -> int:
 
     legacy_protocol_test(binary)
     print("PASS: legacy MCP initialization, tools/list, tools/call, and unknown-tool error")
+    oldest_legacy_protocol_test(binary)
+    print("PASS: MCP 2024-11-05 legacy tool schema without annotations")
     modern_protocol_test(binary)
-    print("PASS: MCP 2026-07-28 discovery, cache metadata, and tool calls")
+    print("PASS: MCP 2026-07-28 discovery, cache metadata, and read-only annotations")
     all_tools_test(binary)
     print("PASS: all 12 read-only Linux diagnostic tools")
     unsupported_version_test(binary)

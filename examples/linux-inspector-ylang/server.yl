@@ -178,10 +178,46 @@ function send_discovery_result(borrowed_string id_raw) -> void {
     send_result(id_raw, result);
 }
 
-function send_tools_list(borrowed_string id_raw, bool modern_mode) -> void {
-    let owned_string tools = json.parse(
-        "[{\"name\":\"system_info\",\"description\":\"Read Linux distribution identification from /etc/os-release.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"hostname_info\",\"description\":\"Read the system hostname from /etc/hostname.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"kernel_info\",\"description\":\"Read the running kernel build information from /proc/version.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"cpu_info\",\"description\":\"Read CPU model, topology, and feature information from /proc/cpuinfo.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"memory_info\",\"description\":\"Read memory totals and counters from /proc/meminfo.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"uptime_info\",\"description\":\"Read uptime and idle-time counters from /proc/uptime.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"load_average\",\"description\":\"Read load averages and scheduler counts from /proc/loadavg.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"loaded_modules\",\"description\":\"Read the currently loaded kernel module list from /proc/modules.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"mounts_info\",\"description\":\"Read the current process mount table from /proc/self/mounts.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"network_info\",\"description\":\"Read network interface byte and packet counters from /proc/net/dev.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"disk_stats\",\"description\":\"Read block-device I/O counters from /proc/diskstats.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}},{\"name\":\"memory_pressure\",\"description\":\"Read memory pressure stall information from /proc/pressure/memory when available.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false},\"annotations\":{\"readOnlyHint\":true}}]"
+function append_tool(
+    borrowed_string tools,
+    borrowed_string name,
+    borrowed_string description,
+    bool modern_mode
+) -> owned_string {
+    let owned_string schema = json.parse(
+        "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"
     );
+
+    let owned_string tool = json.object();
+    tool = json.set(tool, "name", name);
+    tool = json.set(tool, "description", description);
+    tool = json.set(tool, "inputSchema", schema);
+
+    // Tool annotations were introduced after the oldest supported MCP revision.
+    // Add the read-only hint only in the modern protocol era.
+    if (modern_mode) {
+        let owned_string annotations = json.parse("{\"readOnlyHint\":true}");
+        tool = json.set(tool, "annotations", annotations);
+    }
+
+    let owned_string updated_tools = json.push(tools, tool);
+    return move(updated_tools);
+}
+
+function send_tools_list(borrowed_string id_raw, bool modern_mode) -> void {
+    let owned_string tools = json.array();
+    tools = append_tool(tools, "system_info", "Read Linux distribution identification from /etc/os-release. Read-only.", modern_mode);
+    tools = append_tool(tools, "hostname_info", "Read the system hostname from /etc/hostname. Read-only.", modern_mode);
+    tools = append_tool(tools, "kernel_info", "Read running kernel build information from /proc/version. Read-only.", modern_mode);
+    tools = append_tool(tools, "cpu_info", "Read CPU model, topology, and feature information from /proc/cpuinfo. Read-only.", modern_mode);
+    tools = append_tool(tools, "memory_info", "Read memory totals and counters from /proc/meminfo. Read-only.", modern_mode);
+    tools = append_tool(tools, "uptime_info", "Read system uptime and idle-time counters from /proc/uptime. Read-only.", modern_mode);
+    tools = append_tool(tools, "load_average", "Read load averages and scheduler counts from /proc/loadavg. Read-only.", modern_mode);
+    tools = append_tool(tools, "loaded_modules", "Read the currently loaded kernel modules from /proc/modules. Read-only.", modern_mode);
+    tools = append_tool(tools, "mounts_info", "Read the current process mount table from /proc/self/mounts. Read-only.", modern_mode);
+    tools = append_tool(tools, "network_info", "Read network interface byte and packet counters from /proc/net/dev. Read-only.", modern_mode);
+    tools = append_tool(tools, "disk_stats", "Read block-device I/O counters from /proc/diskstats. Read-only.", modern_mode);
+    tools = append_tool(tools, "memory_pressure", "Read memory pressure stall information from /proc/pressure/memory when available. Read-only.", modern_mode);
 
     let owned_string result = json.object();
     result = json.set(result, "tools", tools);

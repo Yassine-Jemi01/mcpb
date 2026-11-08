@@ -186,7 +186,13 @@ def modern_protocol_test(binary: Path) -> None:
 
     discovery = responses[0]["result"]
     assert discovery["resultType"] == "complete", discovery
-    assert discovery["supportedVersions"] == ["2026-07-28"], discovery
+    assert discovery["supportedVersions"] == [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+        "2024-11-05",
+    ], discovery
     assert discovery["capabilities"].get("tools") == {}, discovery
 
     listing = responses[1]["result"]
@@ -276,6 +282,14 @@ def unsupported_version_test(binary: Path) -> None:
     error = responses[0].get("error", {})
     assert error.get("code") == -32022, responses[0]
     assert error.get("message") == "Unsupported protocol version", responses[0]
+    assert error.get("data", {}).get("supported") == [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+        "2024-11-05",
+    ], responses[0]
+    assert error.get("data", {}).get("requested") == "2099-01-01", responses[0]
 
 
 def parse_error_test(binary: Path) -> None:

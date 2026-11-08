@@ -83,8 +83,9 @@ def legacy_protocol_test(binary: Path) -> None:
         },
     ]
 
+    requests.append({"jsonrpc": "2.0", "id": 6, "method": "ping"})
     responses = run_server(binary, requests)
-    assert [item.get("id") for item in responses] == [1, 2, 3, 4, 5], responses
+    assert [item.get("id") for item in responses] == [1, 2, 3, 4, 5, 6], responses
 
     initialize = responses[0]["result"]
     assert initialize["protocolVersion"] == "2025-11-25", initialize
@@ -117,7 +118,7 @@ def legacy_protocol_test(binary: Path) -> None:
     assert "MemTotal:" in memory_text, memory_text
 
     assert responses[4].get("error", {}).get("code") == -32602, responses[4]
-
+    assert responses[5].get("result") == {}, responses[5]
 
 
 def oldest_legacy_protocol_test(binary: Path) -> None:
@@ -175,6 +176,12 @@ def modern_protocol_test(binary: Path) -> None:
                 "arguments": {},
             },
         },
+        {
+            "jsonrpc": "2.0",
+            "id": "ping-1",
+            "method": "ping",
+            "params": {"_meta": metadata},
+        },
     ]
 
     responses = run_server(binary, requests)
@@ -182,17 +189,12 @@ def modern_protocol_test(binary: Path) -> None:
         "discover-1",
         "tools-1",
         "call-1",
+        "ping-1",
     ], responses
 
     discovery = responses[0]["result"]
     assert discovery["resultType"] == "complete", discovery
-    assert discovery["supportedVersions"] == [
-        "2026-07-28",
-        "2025-11-25",
-        "2025-06-18",
-        "2025-03-26",
-        "2024-11-05",
-    ], discovery
+    assert discovery["supportedVersions"] == ["2026-07-28"], discovery
     assert discovery["capabilities"].get("tools") == {}, discovery
 
     listing = responses[1]["result"]
@@ -206,6 +208,29 @@ def modern_protocol_test(binary: Path) -> None:
     assert call["resultType"] == "complete", call
     assert call["isError"] is False, call
     assert "Source: /proc/uptime" in result_text(responses[2]), call
+    assert responses[3].get("error", {}).get("code") == -32601, responses[3]
+
+
+def intermediate_legacy_protocol_test(binary: Path) -> None:
+    for version in ("2025-06-18", "2025-03-26"):
+        requests = [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": version,
+                    "capabilities": {},
+                    "clientInfo": {"name": "linux-inspector-smoke-test", "version": "1.0"},
+                },
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        ]
+        responses = run_server(binary, requests)
+        assert len(responses) == 2, (version, responses)
+        assert responses[0]["result"]["protocolVersion"] == version, (version, responses)
+        assert len(responses[1]["result"]["tools"]) == 12, (version, responses)
 
 
 def all_tools_test(binary: Path) -> None:
@@ -321,6 +346,8 @@ def main() -> int:
     print("PASS: legacy MCP initialization, tools/list, tools/call, and unknown-tool error")
     oldest_legacy_protocol_test(binary)
     print("PASS: MCP 2024-11-05 legacy tool schema without annotations")
+    intermediate_legacy_protocol_test(binary)
+    print("PASS: MCP 2025-06-18 and 2025-03-26 legacy initialization")
     modern_protocol_test(binary)
     print("PASS: MCP 2026-07-28 discovery, cache metadata, and read-only annotations")
     all_tools_test(binary)
